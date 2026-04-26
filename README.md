@@ -11,6 +11,7 @@ The image installs:
 - Codex CLI from the official Linux release binary
 - Git and Git LFS
 - Common shell tools such as `jq`, `curl`, `wget`, `ripgrep`, `fd`, `zip`, `unzip`, and `tar`
+- Bubblewrap for Codex sandboxing support
 - Python 3 and build tools for typical project workflows
 
 ## Prerequisites
@@ -23,7 +24,13 @@ The image installs:
 From the repository root:
 
 ```sh
-docker build -t codex -f src/Dockerfile .
+docker build -t codex src
+```
+
+Or from inside the `src` folder:
+
+```sh
+docker build -t codex .
 ```
 
 ## Run
@@ -31,6 +38,8 @@ docker build -t codex -f src/Dockerfile .
 ```sh
 docker run --rm -it codex
 ```
+
+If `OPENAI_API_KEY` is not set, the container starts Codex and prints a note that you need to authenticate interactively with the device-code login flow shown by the Codex CLI.
 
 To mount the current project into the container and pass your API key:
 
@@ -63,6 +72,16 @@ docker run --rm -it \
   codex
 ```
 
+If you mount an existing Codex configuration, you can omit `-e OPENAI_API_KEY`:
+
+```sh
+docker run --rm -it \
+  -v "$HOME/.codex:/home/codex/.codex" \
+  -v "$(pwd):/workspace" \
+  -w /workspace \
+  codex
+```
+
 ## PowerShell Helper
 
 Add this function to your PowerShell `$PROFILE` to start Codex in Docker from the folder you are currently in:
@@ -70,18 +89,15 @@ Add this function to your PowerShell `$PROFILE` to start Codex in Docker from th
 ```powershell
 function codex-docker {
     $workspace = (Get-Location).Path
-    $codexHome = Join-Path $env:USERPROFILE ".codex"
+    $codexVolume = "codex-home"
 
     $dockerArgs = @(
         "run", "--rm", "-it",
         "-e", "OPENAI_API_KEY",
+        "-v", "${codexVolume}:/home/codex/.codex",
         "-v", "${workspace}:/workspace",
         "-w", "/workspace"
     )
-
-    if (Test-Path $codexHome) {
-        $dockerArgs += @("-v", "${codexHome}:/home/codex/.codex")
-    }
 
     $dockerArgs += @("codex")
     $dockerArgs += $args
@@ -89,6 +105,9 @@ function codex-docker {
     docker @dockerArgs
 }
 ```
+
+The `codex-home` Docker volume keeps Codex login/config state between container runs while avoiding Windows bind-mount permission issues.
+On startup, the container ensures `/home/codex/.codex` is owned by the `codex` user before launching the CLI. This avoids Codex TUI startup failures caused by config files or Docker volumes with the wrong owner.
 
 Reload your profile:
 

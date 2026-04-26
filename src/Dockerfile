@@ -7,6 +7,7 @@ ARG TARGETARCH
 ARG CODEX_VERSION=latest
 
 ENV DEBIAN_FRONTEND=noninteractive \
+    CODEX_USER=codex \
     LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8
@@ -14,6 +15,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         bash \
+        bubblewrap \
         build-essential \
         ca-certificates \
         curl \
@@ -62,6 +64,9 @@ RUN set -eux; \
     rm -f /tmp/codex.tar.gz "/tmp/codex-${codex_target}"; \
     codex --version
 
+COPY codex-entrypoint.sh /usr/local/bin/codex-entrypoint
+RUN chmod 0755 /usr/local/bin/codex-entrypoint
+
 RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
     && useradd --uid "${USER_UID}" --gid "${USER_GID}" --create-home --shell /bin/bash "${USERNAME}" \
     && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}" \
@@ -69,10 +74,11 @@ RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
     && mkdir -p /workspace \
     && chown -R "${USERNAME}:${USERNAME}" /workspace
 
-USER ${USERNAME}
 WORKDIR /workspace
 
 RUN mkdir -p "/home/${USERNAME}/.codex" \
+    && chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}/.codex" \
     && codex --version
 
+ENTRYPOINT ["codex-entrypoint"]
 CMD ["codex"]
