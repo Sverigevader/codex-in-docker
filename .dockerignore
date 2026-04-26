@@ -1,0 +1,40 @@
+.git
+.gitignore
+.dockerignore
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# Editor and OS files
+.idea
+.vscode
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs and caches
+*.log
+logs
+.cache
+.pytest_cache
+.ruff_cache
+
+# Dependencies and build output
+node_modules
+vendor
+build
+dist
+out
+tmp
+temp
+
+# Packaged artifacts
+*.tar
+*.tar.gz
+*.tgz
+*.zip
