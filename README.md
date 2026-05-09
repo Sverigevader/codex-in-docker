@@ -159,6 +159,79 @@ codex-docker --version
 codex-docker "explain this repo"
 ```
 
+## Bash Helper
+
+Add these functions to your shell profile, such as `~/.bashrc` or `~/.bash_profile`, to start tools in Docker from the folder you are currently in:
+
+```bash
+invoke_codex_docker() {
+    local command=("$@")
+    if [ "$#" -eq 0 ]; then
+        command=("codex")
+    fi
+
+    local workspace
+    workspace="$(pwd)"
+    local codex_volume="codex-home"
+    local pi_volume="pi-home"
+
+    docker run --rm -it \
+        -e OPENAI_API_KEY \
+        -v "${codex_volume}:/home/codex/.codex" \
+        -v "${pi_volume}:/home/codex/.pi" \
+        -v "${workspace}:/workspace" \
+        -w /workspace \
+        codex \
+        "${command[@]}"
+}
+
+codex-docker() {
+    invoke_codex_docker codex "$@"
+}
+
+codex-shell() {
+    invoke_codex_docker bash "$@"
+}
+
+pi-docker() {
+    invoke_codex_docker pi "$@"
+}
+```
+
+The `codex-home` Docker volume keeps Codex login/config state between container runs, and the `pi-home` Docker volume keeps Pi login/config state between container runs. These named volumes avoid host bind-mount permission issues.
+On startup, the container ensures `/home/codex/.codex` and `/home/codex/.pi` are owned by the `codex` user before launching the CLI. This avoids TUI startup failures caused by config files or Docker volumes with the wrong owner.
+
+Reload your profile:
+
+```bash
+source ~/.bashrc
+```
+
+Then run Codex from any folder:
+
+```bash
+codex-docker
+```
+
+Start a shell in the container when you want to choose between `codex`, `pi`, and other installed tools:
+
+```bash
+codex-shell
+```
+
+Run `pi` directly:
+
+```bash
+pi-docker
+```
+
+You can also pass Codex CLI arguments through:
+
+```bash
+codex-docker --version
+codex-docker "explain this repo"
+```
+
 ## Repository Layout
 
 ```text
