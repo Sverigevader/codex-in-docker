@@ -84,10 +84,14 @@ docker run --rm -it \
 
 ## PowerShell Helper
 
-Add this function to your PowerShell `$PROFILE` to start Codex in Docker from the folder you are currently in:
+Add these functions to your PowerShell `$PROFILE` to start tools in Docker from the folder you are currently in:
 
 ```powershell
-function codex-docker {
+function Invoke-CodexDocker {
+    param(
+        [string[]]$Command = @("codex")
+    )
+
     $workspace = (Get-Location).Path
     $codexVolume = "codex-home"
 
@@ -100,9 +104,21 @@ function codex-docker {
     )
 
     $dockerArgs += @("codex")
-    $dockerArgs += $args
+    $dockerArgs += $Command
 
     docker @dockerArgs
+}
+
+function codex-docker {
+    Invoke-CodexDocker (@("codex") + $args)
+}
+
+function codex-shell {
+    Invoke-CodexDocker (@("bash") + $args)
+}
+
+function pi-docker {
+    Invoke-CodexDocker (@("pi") + $args)
 }
 ```
 
@@ -119,6 +135,18 @@ Then run Codex from any folder:
 
 ```powershell
 codex-docker
+```
+
+Start a shell in the container when you want to choose between `codex`, `pi`, and other installed tools:
+
+```powershell
+codex-shell
+```
+
+Run `pi` directly:
+
+```powershell
+pi-docker
 ```
 
 You can also pass Codex CLI arguments through:

@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 ARG USERNAME=codex
 ARG USER_UID=1001
@@ -28,6 +28,8 @@ RUN apt-get update \
         less \
         locales \
         nano \
+        nodejs \
+        npm \
         openssh-client \
         procps \
         python3 \
@@ -45,6 +47,8 @@ RUN apt-get update \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g @earendil-works/pi-coding-agent
 
 RUN set -eux; \
     case "${TARGETARCH}" in \
