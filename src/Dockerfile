@@ -5,9 +5,10 @@ ARG USER_UID=1001
 ARG USER_GID=1001
 ARG TARGETARCH
 ARG CODEX_VERSION=latest
+ARG POWERSHELL_VERSION=7.6.0
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    CODEX_USER=codex \
+    CODEX_USER=${USERNAME} \
     LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8
@@ -48,6 +49,30 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+        amd64) \
+            powershell_asset="powershell_${POWERSHELL_VERSION}-1.deb_amd64.deb"; \
+            wget -q "https://github.com/PowerShell/PowerShell/releases/download/v${POWERSHELL_VERSION}/${powershell_asset}" -O "/tmp/${powershell_asset}"; \
+            apt-get update; \
+            apt-get install -y --no-install-recommends "/tmp/${powershell_asset}"; \
+            rm -f "/tmp/${powershell_asset}"; \
+            apt-get clean; \
+            rm -rf /var/lib/apt/lists/*; \
+            ;; \
+        arm64) \
+            powershell_asset="powershell-${POWERSHELL_VERSION}-linux-arm64.tar.gz"; \
+            mkdir -p /opt/microsoft/powershell/7; \
+            wget -q "https://github.com/PowerShell/PowerShell/releases/download/v${POWERSHELL_VERSION}/${powershell_asset}" -O "/tmp/${powershell_asset}"; \
+            tar -xzf "/tmp/${powershell_asset}" -C /opt/microsoft/powershell/7; \
+            chmod 0755 /opt/microsoft/powershell/7/pwsh; \
+            ln -s /opt/microsoft/powershell/7/pwsh /usr/local/bin/pwsh; \
+            rm -f "/tmp/${powershell_asset}"; \
+            ;; \
+        *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    pwsh --version
+
 RUN npm install -g @earendil-works/pi-coding-agent
 
 RUN set -eux; \
@@ -72,16 +97,20 @@ COPY codex-entrypoint.sh /usr/local/bin/codex-entrypoint
 RUN chmod 0755 /usr/local/bin/codex-entrypoint
 
 RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
-    && useradd --uid "${USER_UID}" --gid "${USER_GID}" --create-home --shell /bin/bash "${USERNAME}" \
+    && useradd --uid "${USER_UID}" --gid "${USER_GID}" --home-dir "/home/${USERNAME}" --create-home --shell /bin/bash "${USERNAME}" \
     && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}" \
     && chmod 0440 "/etc/sudoers.d/${USERNAME}" \
     && mkdir -p /workspace \
     && chown -R "${USERNAME}:${USERNAME}" /workspace
 
+ENV HOME=/home/${USERNAME} \
+    CODEX_HOME=/home/${USERNAME}/.codex \
+    PI_CODING_AGENT_DIR=/home/${USERNAME}/.pi/agent
+
 WORKDIR /workspace
 
-RUN mkdir -p "/home/${USERNAME}/.codex" \
-    && chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}/.codex" \
+RUN mkdir -p "/home/${USERNAME}/.codex" "/home/${USERNAME}/.pi" \
+    && chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}/.codex" "/home/${USERNAME}/.pi" \
     && codex --version
 
 ENTRYPOINT ["codex-entrypoint"]

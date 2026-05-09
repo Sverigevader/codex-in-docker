@@ -11,6 +11,7 @@ The image installs:
 - Codex CLI from the official Linux release binary
 - Git and Git LFS
 - Common shell tools such as `jq`, `curl`, `wget`, `ripgrep`, `fd`, `zip`, `unzip`, and `tar`
+- PowerShell Core (`pwsh`)
 - Bubblewrap for Codex sandboxing support
 - Python 3 and build tools for typical project workflows
 
@@ -94,11 +95,13 @@ function Invoke-CodexDocker {
 
     $workspace = (Get-Location).Path
     $codexVolume = "codex-home"
+    $piVolume = "pi-home"
 
     $dockerArgs = @(
         "run", "--rm", "-it",
         "-e", "OPENAI_API_KEY",
         "-v", "${codexVolume}:/home/codex/.codex",
+        "-v", "${piVolume}:/home/codex/.pi",
         "-v", "${workspace}:/workspace",
         "-w", "/workspace"
     )
@@ -122,8 +125,8 @@ function pi-docker {
 }
 ```
 
-The `codex-home` Docker volume keeps Codex login/config state between container runs while avoiding Windows bind-mount permission issues.
-On startup, the container ensures `/home/codex/.codex` is owned by the `codex` user before launching the CLI. This avoids Codex TUI startup failures caused by config files or Docker volumes with the wrong owner.
+The `codex-home` Docker volume keeps Codex login/config state between container runs, and the `pi-home` Docker volume keeps Pi login/config state between container runs. These named volumes avoid Windows bind-mount permission issues.
+On startup, the container ensures `/home/codex/.codex` and `/home/codex/.pi` are owned by the `codex` user before launching the CLI. This avoids TUI startup failures caused by config files or Docker volumes with the wrong owner.
 
 Reload your profile:
 
