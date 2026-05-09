@@ -10,7 +10,7 @@ The image installs:
 
 - Codex CLI from the official Linux release binary
 - Git and Git LFS
-- Common shell tools such as `jq`, `curl`, `wget`, `ripgrep`, `fd`, `zip`, `unzip`, and `tar`
+- Common shell tools
 - PowerShell Core (`pwsh`)
 - Bubblewrap for Codex sandboxing support
 - Python 3 and build tools for typical project workflows
