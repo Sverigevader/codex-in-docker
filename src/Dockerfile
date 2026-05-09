@@ -38,6 +38,7 @@ RUN apt-get update \
         ripgrep \
         sudo \
         tar \
+        tmux \
         unzip \
         vim-tiny \
         wget \
@@ -94,7 +95,9 @@ RUN set -eux; \
     codex --version
 
 COPY codex-entrypoint.sh /usr/local/bin/codex-entrypoint
-RUN chmod 0755 /usr/local/bin/codex-entrypoint
+RUN chmod 0755 /usr/local/bin/codex-entrypoint \
+    && printf '\nalias cls=clear\n' >> /etc/bash.bashrc \
+    && printf 'set -g mouse on\n' >> /etc/tmux.conf
 
 RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
     && useradd --uid "${USER_UID}" --gid "${USER_GID}" --home-dir "/home/${USERNAME}" --create-home --shell /bin/bash "${USERNAME}" \
