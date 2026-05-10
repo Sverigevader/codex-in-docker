@@ -5,7 +5,9 @@ ARG USER_UID=1001
 ARG USER_GID=1001
 ARG TARGETARCH
 ARG CODEX_VERSION=latest
+ARG CODEX_SHA256=""
 ARG POWERSHELL_VERSION=7.6.0
+ARG POWERSHELL_SHA256=""
 ARG PI_PACKAGES="npm:pi-subagents"
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -53,10 +55,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \
-    case "${TARGETARCH}" in \
+    arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
+    case "${arch}" in \
         amd64) \
             powershell_asset="powershell_${POWERSHELL_VERSION}-1.deb_amd64.deb"; \
             wget -q "https://github.com/PowerShell/PowerShell/releases/download/v${POWERSHELL_VERSION}/${powershell_asset}" -O "/tmp/${powershell_asset}"; \
+            if [ -n "${POWERSHELL_SHA256}" ]; then echo "${POWERSHELL_SHA256}  /tmp/${powershell_asset}" | sha256sum -c -; fi; \
             apt-get update; \
             apt-get install -y --no-install-recommends "/tmp/${powershell_asset}"; \
             rm -f "/tmp/${powershell_asset}"; \
@@ -67,22 +71,24 @@ RUN set -eux; \
             powershell_asset="powershell-${POWERSHELL_VERSION}-linux-arm64.tar.gz"; \
             mkdir -p /opt/microsoft/powershell/7; \
             wget -q "https://github.com/PowerShell/PowerShell/releases/download/v${POWERSHELL_VERSION}/${powershell_asset}" -O "/tmp/${powershell_asset}"; \
+            if [ -n "${POWERSHELL_SHA256}" ]; then echo "${POWERSHELL_SHA256}  /tmp/${powershell_asset}" | sha256sum -c -; fi; \
             tar -xzf "/tmp/${powershell_asset}" -C /opt/microsoft/powershell/7; \
             chmod 0755 /opt/microsoft/powershell/7/pwsh; \
             ln -s /opt/microsoft/powershell/7/pwsh /usr/local/bin/pwsh; \
             rm -f "/tmp/${powershell_asset}"; \
             ;; \
-        *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+        *) echo "Unsupported architecture: ${arch}" >&2; exit 1 ;; \
     esac; \
     pwsh --version
 
 RUN npm install -g @earendil-works/pi-coding-agent pi-subagents
 
 RUN set -eux; \
-    case "${TARGETARCH}" in \
+    arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
+    case "${arch}" in \
         amd64) codex_target="x86_64-unknown-linux-musl" ;; \
         arm64) codex_target="aarch64-unknown-linux-musl" ;; \
-        *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+        *) echo "Unsupported architecture: ${arch}" >&2; exit 1 ;; \
     esac; \
     codex_asset="codex-${codex_target}.tar.gz"; \
     if [ "${CODEX_VERSION}" = "latest" ]; then \
@@ -91,6 +97,7 @@ RUN set -eux; \
         codex_url="https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/${codex_asset}"; \
     fi; \
     curl -fsSL "${codex_url}" -o /tmp/codex.tar.gz; \
+    if [ -n "${CODEX_SHA256}" ]; then echo "${CODEX_SHA256}  /tmp/codex.tar.gz" | sha256sum -c -; fi; \
     tar -xzf /tmp/codex.tar.gz -C /tmp; \
     install -m 0755 "/tmp/codex-${codex_target}" /usr/local/bin/codex; \
     rm -f /tmp/codex.tar.gz "/tmp/codex-${codex_target}"; \

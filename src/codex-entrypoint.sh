@@ -8,17 +8,45 @@ pi_home="${PI_HOME:-${user_home}/.pi}"
 pi_agent_dir="${PI_CODING_AGENT_DIR:-${pi_home}/agent}"
 pi_packages="${PI_PACKAGES-npm:pi-subagents}"
 
+ensure_owned_home_dir() {
+    local path="$1"
+    local label="$2"
+    local canonical_path canonical_home
+
+    canonical_path="$(realpath -m -- "${path}")"
+    canonical_home="$(realpath -m -- "${user_home}")"
+
+    case "${canonical_path}" in
+        "${canonical_home}"|"${canonical_home}"/*) ;;
+        *)
+            echo "WARNING: ${label} path ${path} resolves outside ${user_home}; not creating or changing ownership as root." >&2
+            return 0
+            ;;
+    esac
+
+    mkdir -p "${canonical_path}"
+    if ! chown -R "${codex_user}:${codex_user}" "${canonical_path}" 2>/dev/null; then
+        echo "WARNING: could not update ownership for ${canonical_path}; ${label} may not be able to persist login/config state." >&2
+    fi
+}
+
+ensure_writable_dir() {
+    local path="$1"
+    local label="$2"
+
+    if ! mkdir -p "${path}" 2>/dev/null; then
+        echo "ERROR: could not create ${label} directory ${path}. Check the mounted path and permissions." >&2
+        exit 1
+    fi
+    if [[ ! -w "${path}" ]]; then
+        echo "ERROR: ${label} directory ${path} is not writable by user $(id -un). Check the mounted path and permissions." >&2
+        exit 1
+    fi
+}
+
 if [[ "$(id -u)" == "0" ]]; then
-    mkdir -p "${codex_home}"
-    mkdir -p "${pi_home}"
-
-    if ! chown -R "${codex_user}:${codex_user}" "${codex_home}" 2>/dev/null; then
-        echo "WARNING: could not update ownership for ${codex_home}; Codex may not be able to persist login/config state." >&2
-    fi
-
-    if ! chown -R "${codex_user}:${codex_user}" "${pi_home}" 2>/dev/null; then
-        echo "WARNING: could not update ownership for ${pi_home}; Pi may not be able to persist login/config state." >&2
-    fi
+    ensure_owned_home_dir "${codex_home}" "Codex"
+    ensure_owned_home_dir "${pi_home}" "Pi"
 
     exec sudo -E -H -u "${codex_user}" -- "$0" "$@"
 fi
@@ -27,11 +55,17 @@ export HOME="${user_home}"
 export CODEX_HOME="${codex_home}"
 export PI_CODING_AGENT_DIR="${pi_agent_dir}"
 
-mkdir -p "${pi_agent_dir}"
+ensure_writable_dir "${pi_agent_dir}" "Pi agent"
 settings_file="${pi_agent_dir}/settings.json"
 if [[ -n "${pi_packages}" ]]; then
     if [[ ! -f "${settings_file}" ]]; then
         printf '{"packages":[]}\n' > "${settings_file}"
+    elif ! jq empty "${settings_file}" >/dev/null 2>&1; then
+        echo "ERROR: ${settings_file} is not valid JSON; fix or remove it before starting Pi package seeding." >&2
+        exit 1
+    elif ! jq -e '(.packages == null) or (.packages | type == "array")' "${settings_file}" >/dev/null; then
+        echo "ERROR: ${settings_file} must have a .packages array before Pi package seeding can continue." >&2
+        exit 1
     fi
 
     for pi_package in ${pi_packages}; do

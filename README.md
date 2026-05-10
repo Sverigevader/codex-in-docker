@@ -24,6 +24,24 @@ The result is a small routine: enter a project folder, start the container, work
 docker build -t codex src
 ```
 
+Useful build arguments:
+
+```sh
+docker build \
+  --build-arg USER_UID="$(id -u)" \
+  --build-arg USER_GID="$(id -g)" \
+  --build-arg CODEX_VERSION=latest \
+  --build-arg CODEX_SHA256="" \
+  --build-arg POWERSHELL_VERSION=7.6.0 \
+  --build-arg POWERSHELL_SHA256="" \
+  --build-arg PI_PACKAGES="npm:pi-subagents" \
+  -t codex src
+```
+
+The default image tracks current upstream inputs (`debian:trixie-slim`, latest Codex, and current npm packages), so builds are convenient but not byte-for-byte reproducible. Pin the base image, `CODEX_VERSION`, npm package versions, and downloaded checksums if you need fully reproducible builds. Set `CODEX_SHA256` or `POWERSHELL_SHA256` to a non-empty SHA-256 digest to verify those downloaded artifacts during the build.
+
+`PI_PACKAGES` sets the default packages that the entrypoint seeds into `/home/codex/.pi/agent/settings.json` at container startup. It does not change the npm packages installed into the image during `docker build`.
+
 ## Use It
 
 Run Codex directly:
@@ -58,6 +76,12 @@ docker run --rm -it `
 
 If `OPENAI_API_KEY` is not set, Codex can still authenticate interactively.
 
+Environment variables passed with `-e` are visible to Docker administrators and may appear in container metadata. For less secret exposure, prefer interactive Codex login and persist `/home/codex/.codex` with a named volume. The shell helpers below ask Git to resolve the commit identity for the current project, including repo-local and conditional include config, then pass only the resolved name/email instead of mounting your host `~/.gitconfig`.
+
+On Linux, the container command runs as user `codex` (UID/GID `1001` by default). If your bind-mounted project is owned by another UID, writes in `/workspace` may fail. Rebuild with matching `USER_UID` and `USER_GID` as shown above, or adjust the host directory permissions.
+
+The `codex` user has passwordless `sudo` inside the container for development convenience. Treat read-write bind mounts as writable by a privileged container process, and only mount projects you intend the agent to modify.
+
 ## Shell Helpers
 
 For regular use, put a small wrapper in your shell profile so the current directory is always mounted as `/workspace`.
@@ -68,14 +92,28 @@ PowerShell:
 function Invoke-CodexDocker {
     param([string[]]$Command = @("codex"))
 
-    docker run --rm -it `
-        -e OPENAI_API_KEY `
-        -v codex-home:/home/codex/.codex `
-        -v pi-home:/home/codex/.pi `
-        -v "${PWD}:/workspace" `
-        -w /workspace `
-        codex `
-        @Command
+    $envArgs = @("-e", "OPENAI_API_KEY")
+    $gitIdent = git var GIT_AUTHOR_IDENT 2>$null
+    if ($LASTEXITCODE -eq 0 -and $gitIdent -match '^(?<name>.+) <(?<email>[^<>]+)> \d+ [+-]\d+$') {
+        $envArgs += @(
+            "-e", "GIT_AUTHOR_NAME=$($Matches.name)",
+            "-e", "GIT_AUTHOR_EMAIL=$($Matches.email)",
+            "-e", "GIT_COMMITTER_NAME=$($Matches.name)",
+            "-e", "GIT_COMMITTER_EMAIL=$($Matches.email)"
+        )
+    }
+
+    $dockerArgs = @(
+        "run", "--rm", "-it"
+    ) + $envArgs + @(
+        "-v", "codex-home:/home/codex/.codex",
+        "-v", "pi-home:/home/codex/.pi",
+        "-v", "${PWD}:/workspace",
+        "-w", "/workspace",
+        "codex"
+    ) + $Command
+
+    docker @dockerArgs
 }
 
 function codex-docker { Invoke-CodexDocker (@("codex") + $args) }
@@ -92,8 +130,24 @@ invoke_codex_docker() {
         command=("codex")
     fi
 
+    local env_args=(-e OPENAI_API_KEY)
+    local git_ident git_name git_email
+    if git_ident="$(git var GIT_AUTHOR_IDENT 2>/dev/null)"; then
+        git_name="${git_ident% <*}"
+        git_email="${git_ident#* <}"
+        git_email="${git_email%%>*}"
+        if [ -n "${git_name}" ] && [ -n "${git_email}" ]; then
+            env_args+=(
+                -e "GIT_AUTHOR_NAME=${git_name}"
+                -e "GIT_AUTHOR_EMAIL=${git_email}"
+                -e "GIT_COMMITTER_NAME=${git_name}"
+                -e "GIT_COMMITTER_EMAIL=${git_email}"
+            )
+        fi
+    fi
+
     docker run --rm -it \
-        -e OPENAI_API_KEY \
+        "${env_args[@]}" \
         -v codex-home:/home/codex/.codex \
         -v pi-home:/home/codex/.pi \
         -v "$(pwd):/workspace" \
@@ -136,6 +190,8 @@ To disable automatic Pi package seeding for one run:
 docker run --rm -it -e PI_PACKAGES="" codex pi
 ```
 
+If `/home/codex/.pi/agent/settings.json` already exists but is not valid JSON, or has a non-array `packages` value, startup stops with an error so the mounted settings file can be fixed or removed before package seeding continues.
+
 ## What's Inside
 
 - Codex CLI from the official Linux release binary
@@ -164,6 +220,14 @@ For Docker or entrypoint changes, validate with:
 
 ```sh
 docker build -t codex src
+```
+
+Optional smoke checks after building:
+
+```sh
+docker run --rm codex codex --version
+docker run --rm codex pi --version
+docker run --rm -e PI_PACKAGES="npm:pi-subagents" codex bash -lc 'jq -e ".packages | index(\"npm:pi-subagents\")" /home/codex/.pi/agent/settings.json'
 ```
 
 ## License
