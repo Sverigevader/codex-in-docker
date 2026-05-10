@@ -6,12 +6,14 @@ ARG USER_GID=1001
 ARG TARGETARCH
 ARG CODEX_VERSION=latest
 ARG POWERSHELL_VERSION=7.6.0
+ARG PI_PACKAGES="npm:pi-subagents"
 
 ENV DEBIAN_FRONTEND=noninteractive \
     CODEX_USER=${USERNAME} \
     LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
-    LC_ALL=en_US.UTF-8
+    LC_ALL=en_US.UTF-8 \
+    PI_PACKAGES=${PI_PACKAGES}
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -74,7 +76,7 @@ RUN set -eux; \
     esac; \
     pwsh --version
 
-RUN npm install -g @earendil-works/pi-coding-agent
+RUN npm install -g @earendil-works/pi-coding-agent pi-subagents
 
 RUN set -eux; \
     case "${TARGETARCH}" in \

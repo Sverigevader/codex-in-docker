@@ -9,6 +9,8 @@ This repository is intended to hold the Dockerfile and supporting files needed t
 The image installs:
 
 - Codex CLI from the official Linux release binary
+- Pi Coding Agent
+- `pi-subagents` for Pi subagent delegation
 - Git and Git LFS
 - Common shell tools
 - PowerShell Core (`pwsh`)
@@ -152,6 +154,17 @@ Run `pi` directly:
 pi-docker
 ```
 
+Pi starts with `pi-subagents` enabled by default. The image installs the npm package globally, and the entrypoint adds `npm:pi-subagents` to `/home/codex/.pi/agent/settings.json` when it is missing. This matters when you mount the `pi-home` volume, because the mounted volume replaces the Pi settings that were present when the image was built.
+
+To disable the automatic package entry for a run:
+
+```powershell
+docker run --rm -it `
+  -e PI_PACKAGES="" `
+  -v "pi-home:/home/codex/.pi" `
+  codex pi
+```
+
 You can also pass Codex CLI arguments through:
 
 ```powershell
@@ -225,6 +238,17 @@ Run `pi` directly:
 pi-docker
 ```
 
+Pi starts with `pi-subagents` enabled by default. The image installs the npm package globally, and the entrypoint adds `npm:pi-subagents` to `/home/codex/.pi/agent/settings.json` when it is missing. This matters when you mount the `pi-home` volume, because the mounted volume replaces the Pi settings that were present when the image was built.
+
+To disable the automatic package entry for a run:
+
+```bash
+docker run --rm -it \
+    -e PI_PACKAGES="" \
+    -v "pi-home:/home/codex/.pi" \
+    codex pi
+```
+
 You can also pass Codex CLI arguments through:
 
 ```bash
@@ -250,6 +274,7 @@ codex-docker "explain this repo"
 - Keep generated files, local environment files, and editor-specific metadata out of version control.
 - Prefer small, explicit Dockerfile changes so image behavior stays easy to review.
 - Document any required environment variables or mounted paths in this README as they are added.
+- The `PI_PACKAGES` environment variable controls the Pi packages that the entrypoint ensures in global Pi settings. It defaults to `npm:pi-subagents`.
 
 ## License
 
