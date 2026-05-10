@@ -1,54 +1,44 @@
 # Codex Docker
 
-Docker image setup for running Codex in a reproducible, but most importantly _isolated_ container environment.
+Run Codex and Pi inside a disposable Linux container, while keeping your host machine clean.
 
-## Overview
+The point of this image is not just reproducibility. It gives coding agents a place to work that is separate from your everyday shell, npm cache, editor state, and filesystem permissions. Your project is mounted into `/workspace`; Codex and Pi get persistent named volumes for their own login and settings; everything else can disappear when the container exits.
 
-This repository is intended to hold the Dockerfile and supporting files needed to build a Codex development image.
+## Why
 
-The image installs:
+Coding agents are most useful when they can run commands, inspect projects, and install the tools a repository needs. That is also exactly why it is nice to give them a clear boundary.
 
-- Codex CLI from the official Linux release binary
-- Pi Coding Agent
-- `pi-subagents` for Pi subagent delegation
-- Git and Git LFS
-- Common shell tools
-- PowerShell Core (`pwsh`)
-- Bubblewrap for Codex sandboxing support
-- Python 3 and build tools for typical project workflows
+This image provides:
 
-## Prerequisites
+- a Linux environment for Codex and Pi, even from Windows
+- named Docker volumes for Codex and Pi auth/config state
+- common development tools without touching the host
+- Bubblewrap support for Codex sandboxing
+- Pi with `pi-subagents` already available
 
-- Docker or Docker Desktop
-- Git
+The result is a small routine: enter a project folder, start the container, work with the agent, leave no toolchain mess behind.
 
 ## Build
-
-From the repository root:
 
 ```sh
 docker build -t codex src
 ```
 
-Or from inside the `src` folder:
+## Use It
 
-```sh
-docker build -t codex .
-```
-
-## Run
+Run Codex directly:
 
 ```sh
 docker run --rm -it codex
 ```
 
-If `OPENAI_API_KEY` is not set, the container starts Codex and prints a note that you need to authenticate interactively with the device-code login flow shown by the Codex CLI.
-
-To mount the current project into the container and pass your API key:
+Most of the time you want to mount the current project and persist agent state:
 
 ```sh
 docker run --rm -it \
   -e OPENAI_API_KEY \
+  -v codex-home:/home/codex/.codex \
+  -v pi-home:/home/codex/.pi \
   -v "$(pwd):/workspace" \
   -w /workspace \
   codex
@@ -59,122 +49,41 @@ On Windows PowerShell:
 ```powershell
 docker run --rm -it `
   -e OPENAI_API_KEY `
+  -v codex-home:/home/codex/.codex `
+  -v pi-home:/home/codex/.pi `
   -v "${PWD}:/workspace" `
   -w /workspace `
   codex
 ```
 
-You can also mount your local Codex configuration:
+If `OPENAI_API_KEY` is not set, Codex can still authenticate interactively.
 
-```sh
-docker run --rm -it \
-  -e OPENAI_API_KEY \
-  -v "$HOME/.codex:/home/codex/.codex" \
-  -v "$(pwd):/workspace" \
-  -w /workspace \
-  codex
-```
+## Shell Helpers
 
-If you mount an existing Codex configuration, you can omit `-e OPENAI_API_KEY`:
+For regular use, put a small wrapper in your shell profile so the current directory is always mounted as `/workspace`.
 
-```sh
-docker run --rm -it \
-  -v "$HOME/.codex:/home/codex/.codex" \
-  -v "$(pwd):/workspace" \
-  -w /workspace \
-  codex
-```
-
-## PowerShell Helper
-
-Add these functions to your PowerShell `$PROFILE` to start tools in Docker from the folder you are currently in:
+PowerShell:
 
 ```powershell
 function Invoke-CodexDocker {
-    param(
-        [string[]]$Command = @("codex")
-    )
+    param([string[]]$Command = @("codex"))
 
-    $workspace = (Get-Location).Path
-    $codexVolume = "codex-home"
-    $piVolume = "pi-home"
-
-    $dockerArgs = @(
-        "run", "--rm", "-it",
-        "-e", "OPENAI_API_KEY",
-        "-v", "${codexVolume}:/home/codex/.codex",
-        "-v", "${piVolume}:/home/codex/.pi",
-        "-v", "${workspace}:/workspace",
-        "-w", "/workspace"
-    )
-
-    $dockerArgs += @("codex")
-    $dockerArgs += $Command
-
-    docker @dockerArgs
+    docker run --rm -it `
+        -e OPENAI_API_KEY `
+        -v codex-home:/home/codex/.codex `
+        -v pi-home:/home/codex/.pi `
+        -v "${PWD}:/workspace" `
+        -w /workspace `
+        codex `
+        @Command
 }
 
-function codex-docker {
-    Invoke-CodexDocker (@("codex") + $args)
-}
-
-function codex-shell {
-    Invoke-CodexDocker (@("bash") + $args)
-}
-
-function pi-docker {
-    Invoke-CodexDocker (@("pi") + $args)
-}
+function codex-docker { Invoke-CodexDocker (@("codex") + $args) }
+function codex-shell { Invoke-CodexDocker (@("bash") + $args) }
+function pi-docker { Invoke-CodexDocker (@("pi") + $args) }
 ```
 
-The `codex-home` Docker volume keeps Codex login/config state between container runs, and the `pi-home` Docker volume keeps Pi login/config state between container runs. These named volumes avoid Windows bind-mount permission issues.
-On startup, the container ensures `/home/codex/.codex` and `/home/codex/.pi` are owned by the `codex` user before launching the CLI. This avoids TUI startup failures caused by config files or Docker volumes with the wrong owner.
-
-Reload your profile:
-
-```powershell
-. $PROFILE
-```
-
-Then run Codex from any folder:
-
-```powershell
-codex-docker
-```
-
-Start a shell in the container when you want to choose between `codex`, `pi`, and other installed tools:
-
-```powershell
-codex-shell
-```
-
-Run `pi` directly:
-
-```powershell
-pi-docker
-```
-
-Pi starts with `pi-subagents` enabled by default. The image installs the npm package globally, and the entrypoint adds `npm:pi-subagents` to `/home/codex/.pi/agent/settings.json` when it is missing. This matters when you mount the `pi-home` volume, because the mounted volume replaces the Pi settings that were present when the image was built.
-
-To disable the automatic package entry for a run:
-
-```powershell
-docker run --rm -it `
-  -e PI_PACKAGES="" `
-  -v "pi-home:/home/codex/.pi" `
-  codex pi
-```
-
-You can also pass Codex CLI arguments through:
-
-```powershell
-codex-docker --version
-codex-docker "explain this repo"
-```
-
-## Bash Helper
-
-Add these functions to your shell profile, such as `~/.bashrc` or `~/.bash_profile`, to start tools in Docker from the folder you are currently in:
+Bash:
 
 ```bash
 invoke_codex_docker() {
@@ -183,99 +92,80 @@ invoke_codex_docker() {
         command=("codex")
     fi
 
-    local workspace
-    workspace="$(pwd)"
-    local codex_volume="codex-home"
-    local pi_volume="pi-home"
-
     docker run --rm -it \
         -e OPENAI_API_KEY \
-        -v "${codex_volume}:/home/codex/.codex" \
-        -v "${pi_volume}:/home/codex/.pi" \
-        -v "${workspace}:/workspace" \
+        -v codex-home:/home/codex/.codex \
+        -v pi-home:/home/codex/.pi \
+        -v "$(pwd):/workspace" \
         -w /workspace \
         codex \
         "${command[@]}"
 }
 
-codex-docker() {
-    invoke_codex_docker codex "$@"
-}
-
-codex-shell() {
-    invoke_codex_docker bash "$@"
-}
-
-pi-docker() {
-    invoke_codex_docker pi "$@"
-}
+codex-docker() { invoke_codex_docker codex "$@"; }
+codex-shell() { invoke_codex_docker bash "$@"; }
+pi-docker() { invoke_codex_docker pi "$@"; }
 ```
 
-The `codex-home` Docker volume keeps Codex login/config state between container runs, and the `pi-home` Docker volume keeps Pi login/config state between container runs. These named volumes avoid host bind-mount permission issues.
-On startup, the container ensures `/home/codex/.codex` and `/home/codex/.pi` are owned by the `codex` user before launching the CLI. This avoids TUI startup failures caused by config files or Docker volumes with the wrong owner.
+Then from any project:
 
-Reload your profile:
-
-```bash
-source ~/.bashrc
-```
-
-Then run Codex from any folder:
-
-```bash
+```sh
 codex-docker
-```
-
-Start a shell in the container when you want to choose between `codex`, `pi`, and other installed tools:
-
-```bash
+pi-docker
 codex-shell
 ```
 
-Run `pi` directly:
+## Pi Packages
 
-```bash
-pi-docker
-```
+Pi starts with `pi-subagents` enabled. The Docker image installs the npm package, and the entrypoint makes sure `npm:pi-subagents` exists in `/home/codex/.pi/agent/settings.json`.
 
-Pi starts with `pi-subagents` enabled by default. The image installs the npm package globally, and the entrypoint adds `npm:pi-subagents` to `/home/codex/.pi/agent/settings.json` when it is missing. This matters when you mount the `pi-home` volume, because the mounted volume replaces the Pi settings that were present when the image was built.
+That startup step matters because the `pi-home` Docker volume replaces anything baked into `/home/codex/.pi` at image build time.
 
-To disable the automatic package entry for a run:
+To change the default package list:
 
-```bash
+```sh
 docker run --rm -it \
-    -e PI_PACKAGES="" \
-    -v "pi-home:/home/codex/.pi" \
-    codex pi
+  -e PI_PACKAGES="npm:pi-subagents npm:pi-web-access" \
+  -v pi-home:/home/codex/.pi \
+  codex pi
 ```
 
-You can also pass Codex CLI arguments through:
+To disable automatic Pi package seeding for one run:
 
-```bash
-codex-docker --version
-codex-docker "explain this repo"
+```sh
+docker run --rm -it -e PI_PACKAGES="" codex pi
 ```
+
+## What's Inside
+
+- Codex CLI from the official Linux release binary
+- Pi Coding Agent from npm
+- `pi-subagents`
+- Git and Git LFS
+- PowerShell Core
+- Bubblewrap
+- Python 3, Node.js, npm, build tools, and common shell utilities
 
 ## Repository Layout
 
 ```text
 .
 ├── src/
-│   └── Dockerfile
-├── README.md
-├── .dockerignore
-├── .editorconfig
-├── .gitattributes
-└── .gitignore
+│   ├── Dockerfile
+│   └── codex-entrypoint.sh
+└── README.md
 ```
 
-## Development Notes
+## Development
 
-- Keep generated files, local environment files, and editor-specific metadata out of version control.
-- Prefer small, explicit Dockerfile changes so image behavior stays easy to review.
-- Document any required environment variables or mounted paths in this README as they are added.
-- The `PI_PACKAGES` environment variable controls the Pi packages that the entrypoint ensures in global Pi settings. It defaults to `npm:pi-subagents`.
+Keep Dockerfile changes small and explicit. If build args, mounted paths, startup behavior, environment variables, or helper commands change, update this README.
+
+For Docker or entrypoint changes, validate with:
+
+```sh
+docker build -t codex src
+```
 
 ## License
 
-Add a license before publishing or distributing this repository.
+MIT. See [LICENSE](./LICENSE).
